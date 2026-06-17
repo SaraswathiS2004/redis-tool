@@ -1,0 +1,40 @@
+- name: Upgrade one Redis node
+  hosts: redis_nodes
+  become: yes
+
+  tasks:
+    - name: Install build packages
+      apt:
+        name:
+          - build-essential
+          - tcl
+          - wget
+        state: present
+        update_cache: yes
+
+    - name: Download Redis tar file
+      get_url:
+        url: "https://download.redis.io/releases/redis-{{ redis_version }}.tar.gz"
+        dest: "/tmp/redis-{{ redis_version }}.tar.gz"
+
+    - name: Extract Redis
+      unarchive:
+        src: "/tmp/redis-{{ redis_version }}.tar.gz"
+        dest: /tmp/
+        remote_src: yes
+
+    - name: Compile Redis (make)
+      make:
+        chdir: "/tmp/redis-{{ redis_version }}"
+
+    - name: Install Redis (make install)
+      make:
+        chdir: "/tmp/redis-{{ redis_version }}"
+        target: install
+
+    - name: Stop the running Redis
+      shell: /usr/local/bin/redis-cli -p 6379 shutdown nosave
+      ignore_errors: yes
+
+    - name: Start Redis again with the same config
+      shell: /usr/local/bin/redis-server /etc/redis/redis.conf --daemonize yes

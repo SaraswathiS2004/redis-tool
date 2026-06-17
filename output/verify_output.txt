@@ -1,0 +1,11 @@
+Docker 29.5.3 found
+Ansible 2.16.3 found
+Proceeding...
+Data verify Started
+Keys: 1000
+==========================
+RESULT SUMMARY
+TOTAL OK: 1000
+MISSING: 0
+MISMATCH: 0
+PASS - 1000/1000 keys verified

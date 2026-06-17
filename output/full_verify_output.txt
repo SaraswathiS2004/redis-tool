@@ -1,0 +1,13 @@
+Docker 29.5.3 found
+Ansible 2.16.3 found
+Proceeding...
+FULL VERIFICATION
+==========================
+Data integrity      : PASS
+Version consistency : PASS (all v7.0.15)
+Slots covered       : PASS (16384/16384)
+Replicas per master : PASS
+Cluster state       : PASS (ok)
+Replication links   : PASS (all up)
+==========================
+ALL CHECKS PASSED

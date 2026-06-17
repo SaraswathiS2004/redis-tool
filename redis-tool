@@ -1,0 +1,466 @@
+#!/bin/bash
+
+DIR="$(dirname "$0")"
+
+FIRST_NODE="10.10.0.11"
+PORT="6379"
+ALL_NODES="10.10.0.11 10.10.0.12 10.10.0.13 10.10.0.14 10.10.0.15 10.10.0.16"
+
+ipToHost(){
+    last=$(echo "$1" | cut -d. -f4)
+    if [ "$last" -le 13 ];
+    then
+        echo "master$((last - 10))"
+    else
+        echo "replica$((last - 13))"
+    fi
+}
+
+clusterState(){
+    redis-cli -h "$FIRST_NODE" -p "$PORT" cluster info 2>/dev/null | grep cluster_state | cut -d: -f2 | tr -d '\r'
+}
+
+nodeVersion(){
+    redis-cli -h "$1" -p "$PORT" info server 2>/dev/null | grep redis_version | cut -d: -f2 | tr -d '\r'
+}
+
+masterLinkStatus(){
+    redis-cli -h "$1" -p "$PORT" info replication 2>/dev/null | grep master_link_status | cut -d: -f2 | tr -d '\r'
+}
+
+masterIps(){
+    redis-cli -h "$FIRST_NODE" -p "$PORT" cluster nodes 2>/dev/null | awk '$3 ~ /master/ {split($2,a,":"); print a[1]}'
+}
+
+replicaIps(){
+    redis-cli -h "$FIRST_NODE" -p "$PORT" cluster nodes 2>/dev/null | awk '$3 ~ /slave/ {split($2,a,":"); print a[1]}'
+}
+
+idOfIp(){
+    redis-cli -h "$FIRST_NODE" -p "$PORT" cluster nodes 2>/dev/null | awk -v ip="$1" '{split($2,a,":"); if (a[1]==ip) print $1}'
+}
+
+replicaOfMaster(){
+    mid=$(idOfIp "$1")
+    redis-cli -h "$FIRST_NODE" -p "$PORT" cluster nodes 2>/dev/null | awk -v mid="$mid" '$4==mid {split($2,a,":"); print a[1]}' | head -n 1
+}
+
+ipOfId(){
+    redis-cli -h "$FIRST_NODE" -p "$PORT" cluster nodes 2>/dev/null | awk -v id="$1" '{split($2,a,":"); if ($1==id) print a[1]}'
+}
+
+masterSlots(){
+    redis-cli -h "$FIRST_NODE" -p "$PORT" cluster nodes 2>/dev/null | awk -v ip="$1" '{split($2,a,":"); if (a[1]==ip){ s=""; for (i=9;i<=NF;i++){ s=s$i" " }; print s }}'
+}
+
+masterOfReplica(){
+    mid=$(redis-cli -h "$FIRST_NODE" -p "$PORT" cluster nodes 2>/dev/null | awk -v ip="$1" '{split($2,a,":"); if (a[1]==ip) print $4}')
+    ipOfId "$mid"
+}
+
+nodeKeys(){
+    redis-cli -h "$1" -p "$PORT" dbsize 2>/dev/null
+}
+
+nodeMem(){
+    redis-cli -h "$1" -p "$PORT" info memory 2>/dev/null | grep used_memory_human | cut -d: -f2 | tr -d '\r'
+}
+
+waitClusterOk(){
+    tries=0
+    while [ "$(clusterState)" != "ok" ];
+    do
+        tries=$((tries + 1))
+        if [ "$tries" -ge 30 ];
+        then
+            echo "Cluster did not become ok in time"
+            return 1
+        fi
+        sleep 2
+    done
+    return 0
+}
+
+waitReplicaLinked(){
+    tries=0
+    while [ "$(masterLinkStatus "$1")" != "up" ];
+    do
+        tries=$((tries + 1))
+        if [ "$tries" -ge 30 ];
+        then
+            echo "Replica $1 did not link back in time"
+            return 1
+        fi
+        sleep 2
+    done
+    return 0
+}
+
+upgradeOneNode(){
+    ip="$1"
+    version="$2"
+    host=$(ipToHost "$ip")
+    ( cd "$DIR/ansible" && ansible-playbook -i inventory/hosts.ini playbooks/upgrade-node.yml --limit "$host" -e "redis_version=$version" )
+}
+
+provision(){
+
+    version=""
+    masters=""
+    replicas=""
+    shift
+    while [ "$#" -gt 0 ];
+    do
+       if [ "$1" = "--version" ]
+       then
+          version=$2
+          shift 2
+       elif [ "$1" = "--masters" ]
+       then
+           masters=$2
+           shift 2
+       elif [ "$1" = "--replicas-per-master" ]
+       then
+           replicas=$2
+           shift 2
+       else
+           shift
+       fi
+done
+    echo "Provision"
+    echo "Version : $version"
+    echo "Masters : $masters"
+    echo "replicase : $replicas"
+
+    if [ "$(clusterState)" = "ok" ];
+    then
+        echo "Cluster already up and ok, nothing to do"
+        return 0
+    fi
+
+    ( cd "$DIR/ansible" && ansible-playbook -i inventory/hosts.ini playbooks/redis-cluster.yml )
+}
+
+dataSeed(){
+
+    values=1000
+    while [ "$#" -gt 0 ];
+    do
+       if [ "$1" = "--keys" ];
+       then
+           values=$2
+           shift 2
+       else
+           shift
+       fi
+    done
+
+    echo "Data seed Started"
+    echo "keys : $values"
+
+    HOST="10.10.0.11"
+    PORT="6379"
+
+    success=0
+    fail=0
+
+    declare -A slot_count
+
+    for i in $(seq 1 "$values")
+    do
+
+       key="key:$(printf "%04d" $i)"
+
+       #deterministic value
+
+       value=$(echo -n "$key" | sha256sum | awk '{print $1}')
+
+       result=$(redis-cli -c -h $HOST -p $PORT SET "$key" "$value" 2>/dev/null)
+
+       if [ "$result" == "OK" ];
+       then
+         ((success++))
+
+         slot=$(redis-cli -c -h $HOST -p $PORT CLUSTER KEYSLOT "$key" 2>/dev/null)
+
+         if [[ -z "${slot_count[$slot]}" ]];
+         then slot_count[$slot]=1
+         else
+             slot_count[$slot]=$((slot_count[$slot] + 1))
+         fi
+       else ((fail++))
+       fi
+
+    done
+    echo "========================="
+    echo "TOTAL INSERTED: $success"
+    echo "FAILED: $fail"
+}
+dataVerify(){
+
+    values=1000
+
+    echo "Data verify Started"
+    echo "Keys: $values"
+
+    HOST="10.10.0.11"
+    PORT="6379"
+
+    missing=0
+    mismatch=0
+    success=0
+
+    for i in $(seq 1 "$values")
+    do
+      key="key:$(printf "%04d" $i)"
+
+      expected=$(echo -n "$key" | sha256sum | awk '{print $1}')
+
+      actual=$(redis-cli -c -h $HOST -p $PORT GET "$key" 2>/dev/null)
+
+      if [[ -z "$actual" ]];
+      then
+         ((missing++))
+      elif [[ "$actual" != "$expected" ]];
+      then
+         ((mismatch++))
+      else
+         ((success++))
+      fi
+    done
+
+    echo "=========================="
+    echo "RESULT SUMMARY"
+    echo "TOTAL OK: $success"
+    echo "MISSING: $missing"
+    echo "MISMATCH: $mismatch"
+
+    total=$((success + missing + mismatch))
+
+    if [[ $missing -eq 0 && $mismatch -eq 0 ]];
+    then
+        echo "PASS - $total/$total keys verified"
+        return 0
+    else
+        echo "FAIL - $missing missing, $mismatch mismatched"
+        return 1
+    fi
+}
+status(){
+    echo "Cluster State: $(clusterState)"
+    echo ""
+    echo "MASTERS"
+    for ip in $(masterIps);
+    do
+        echo "  $ip:$PORT [master] v$(nodeVersion "$ip") slots: $(masterSlots "$ip") keys: $(nodeKeys "$ip") mem: $(nodeMem "$ip")"
+    done
+
+    echo ""
+    echo "REPLICAS"
+    for ip in $(replicaIps);
+    do
+        echo "  $ip:$PORT [replica] v$(nodeVersion "$ip") replicating: $(masterOfReplica "$ip"):$PORT mem: $(nodeMem "$ip")"
+    done
+}
+
+verify(){
+    echo "FULL VERIFICATION"
+    echo "=========================="
+    ok=0
+
+    if dataVerify >/dev/null 2>&1;
+    then
+        echo "Data integrity      : PASS"
+    else
+        echo "Data integrity      : FAIL"
+        ok=1
+    fi
+
+    first=""
+    same="yes"
+    for ip in $ALL_NODES;
+    do
+        v=$(nodeVersion "$ip")
+        if [ -z "$first" ];
+        then
+            first="$v"
+        elif [ "$v" != "$first" ];
+        then
+            same="no"
+        fi
+    done
+    if [ "$same" = "yes" ];
+    then
+        echo "Version consistency : PASS (all v$first)"
+    else
+        echo "Version consistency : FAIL (versions differ)"
+        ok=1
+    fi
+
+    slots=$(redis-cli -h "$FIRST_NODE" -p "$PORT" cluster info 2>/dev/null | grep cluster_slots_assigned | cut -d: -f2 | tr -d '\r')
+    if [ "$slots" = "16384" ];
+    then
+        echo "Slots covered       : PASS (16384/16384)"
+    else
+        echo "Slots covered       : FAIL ($slots/16384)"
+        ok=1
+    fi
+
+    everyMasterHasReplica="yes"
+    for mip in $(masterIps);
+    do
+        if [ -z "$(replicaOfMaster "$mip")" ];
+        then
+            everyMasterHasReplica="no"
+        fi
+    done
+    if [ "$everyMasterHasReplica" = "yes" ];
+    then
+        echo "Replicas per master : PASS"
+    else
+        echo "Replicas per master : FAIL (a master has no replica)"
+        ok=1
+    fi
+
+    if [ "$(clusterState)" = "ok" ];
+    then
+        echo "Cluster state       : PASS (ok)"
+    else
+        echo "Cluster state       : FAIL"
+        ok=1
+    fi
+
+    linksUp="yes"
+    for rip in $(replicaIps);
+    do
+        if [ "$(masterLinkStatus "$rip")" != "up" ];
+        then
+            linksUp="no"
+        fi
+    done
+    if [ "$linksUp" = "yes" ];
+    then
+        echo "Replication links   : PASS (all up)"
+    else
+        echo "Replication links   : FAIL (a replica link is down)"
+        ok=1
+    fi
+
+    echo "=========================="
+    if [ "$ok" -eq 0 ];
+    then
+        echo "ALL CHECKS PASSED"
+    else
+        echo "SOME CHECKS FAILED"
+    fi
+}
+upgrade(){
+    version=""
+    strategy=""
+    while [ "$#" -gt 0 ];
+    do
+
+      if [ "$1" = "--target-version" ];
+      then
+          version=$2
+          shift 2
+      elif [ "$1" = "--strategy" ];
+      then
+          strategy=$2
+          shift 2
+      else
+          shift
+      fi
+    done
+
+    echo "Upgrade"
+    echo "Version : $version"
+    echo "strategy : $strategy"
+
+    if [ "$(clusterState)" != "ok" ];
+    then
+        echo "Cluster is not ok, stopping"
+        exit 1
+    fi
+
+    current=$(nodeVersion "$FIRST_NODE")
+    if [ "$current" = "$version" ];
+    then
+        echo "Already on version $version, nothing to do"
+        exit 0
+    fi
+
+    echo "Checking data before upgrade..."
+    if ! dataVerify;
+    then
+        echo "Data verify failed before upgrade, stopping"
+        exit 1
+    fi
+
+    startMasters=$(masterIps)
+
+    step=0
+    for rip in $(replicaIps);
+    do
+        step=$((step + 1))
+        echo "[$step] Upgrading replica $rip ..."
+        upgradeOneNode "$rip" "$version"
+        waitReplicaLinked "$rip"
+        waitClusterOk
+        echo "[$step] replica $rip done - cluster: $(clusterState)"
+    done
+
+    for mip in $startMasters;
+    do
+        step=$((step + 1))
+        rep=$(replicaOfMaster "$mip")
+        echo "[$step] Failing over master $mip to replica $rep ..."
+        redis-cli -h "$rep" -p "$PORT" cluster failover 2>/dev/null
+        waitClusterOk
+
+        echo "[$step] Upgrading old master $mip ..."
+        upgradeOneNode "$mip" "$version"
+        waitReplicaLinked "$mip"
+        waitClusterOk
+        echo "[$step] master $mip done - cluster: $(clusterState)"
+    done
+
+    echo "Checking data after upgrade..."
+    dataVerify
+    status
+    echo "UPGRADE COMPLETE"
+}
+
+chmod +x prerequistecheck.sh
+"$DIR/prerequistecheck.sh"
+
+if [ $? -eq 0 ];
+then
+action=$1
+
+   if [ "$action" = "provision" ];
+   then
+       provision "$@"
+   elif [ "$action" = "data" ];
+
+   then
+        if [ "$2" = "verify" ];
+        then
+          dataVerify
+        else
+          dataSeed "$@"
+
+        fi
+    elif [ "$action" = "status" ];
+         then
+             status
+    elif [ "$action" = "upgrade" ];
+         then
+             upgrade  "$@"
+    elif [ "$action" = "verify" ];
+         then
+             verify "$@"
+    fi
+else
+  exit 1
+fi

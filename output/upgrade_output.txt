@@ -1,0 +1,234 @@
+Docker 29.5.3 found
+Ansible 2.16.3 found
+Proceeding...
+Upgrade
+Version : 7.2.6
+strategy : rolling
+Checking data before upgrade...
+Data verify Started
+Keys: 1000
+==========================
+RESULT SUMMARY
+TOTAL OK: 1000
+MISSING: 0
+MISMATCH: 0
+PASS - 1000/1000 keys verified
+[1] Upgrading replica 10.10.0.11 ...
+
+PLAY [Upgrade one Redis node] **************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [master1]
+
+TASK [Install build packages] **************************************************
+ok: [master1]
+
+TASK [Download Redis tar file] *************************************************
+changed: [master1]
+
+TASK [Extract Redis] ***********************************************************
+changed: [master1]
+
+TASK [Compile Redis (make)] ****************************************************
+changed: [master1]
+
+TASK [Install Redis (make install)] ********************************************
+changed: [master1]
+
+TASK [Stop the running Redis] **************************************************
+changed: [master1]
+
+TASK [Start Redis again with the same config] **********************************
+changed: [master1]
+
+PLAY RECAP *********************************************************************
+master1                    : ok=8    changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+
+[1] replica 10.10.0.11 done - cluster: ok
+[2] Upgrading replica 10.10.0.12 ...
+
+PLAY [Upgrade one Redis node] **********************************************************************************************
+
+TASK [Gathering Facts] *****************************************************************************************************
+ok: [master2]
+
+TASK [Install build packages] **********************************************************************************************
+ok: [master2]
+
+TASK [Download Redis tar file] *********************************************************************************************
+changed: [master2]
+
+TASK [Extract Redis] *******************************************************************************************************
+changed: [master2]
+
+TASK [Compile Redis (make)] ************************************************************************************************
+changed: [master2]
+
+TASK [Install Redis (make install)] ****************************************************************************************
+changed: [master2]
+
+TASK [Stop the running Redis] **********************************************************************************************
+changed: [master2]
+
+TASK [Start Redis again with the same config] ******************************************************************************
+changed: [master2]
+
+PLAY RECAP *****************************************************************************************************************
+master2                    : ok=8    changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+
+[2] replica 10.10.0.12 done - cluster: ok
+[3] Upgrading replica 10.10.0.13 ...
+
+PLAY [Upgrade one Redis node] **********************************************************************************************
+
+TASK [Gathering Facts] *****************************************************************************************************
+ok: [master3]
+
+TASK [Install build packages] **********************************************************************************************
+ok: [master3]
+
+TASK [Download Redis tar file] *********************************************************************************************
+changed: [master3]
+
+TASK [Extract Redis] *******************************************************************************************************
+changed: [master3]
+
+TASK [Compile Redis (make)] ************************************************************************************************
+changed: [master3]
+
+TASK [Install Redis (make install)] ****************************************************************************************
+changed: [master3]
+
+TASK [Stop the running Redis] **********************************************************************************************
+changed: [master3]
+
+TASK [Start Redis again with the same config] ******************************************************************************
+changed: [master3]
+
+PLAY RECAP *****************************************************************************************************************
+master3                    : ok=8    changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+
+[3] replica 10.10.0.13 done - cluster: ok
+[4] Failing over master 10.10.0.14 to replica 10.10.0.13 ...
+OK
+[4] Upgrading old master 10.10.0.14 ...
+
+PLAY [Upgrade one Redis node] **********************************************************************************************
+
+TASK [Gathering Facts] *****************************************************************************************************
+ok: [replica1]
+
+TASK [Install build packages] **********************************************************************************************
+ok: [replica1]
+
+TASK [Download Redis tar file] *********************************************************************************************
+changed: [replica1]
+
+TASK [Extract Redis] *******************************************************************************************************
+changed: [replica1]
+
+TASK [Compile Redis (make)] ************************************************************************************************
+changed: [replica1]
+
+TASK [Install Redis (make install)] ****************************************************************************************
+changed: [replica1]
+
+TASK [Stop the running Redis] **********************************************************************************************
+changed: [replica1]
+
+TASK [Start Redis again with the same config] ******************************************************************************
+changed: [replica1]
+
+PLAY RECAP *****************************************************************************************************************
+replica1                   : ok=8    changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+
+[4] master 10.10.0.14 done - cluster: ok
+[5] Failing over master 10.10.0.16 to replica 10.10.0.12 ...
+OK
+[5] Upgrading old master 10.10.0.16 ...
+
+PLAY [Upgrade one Redis node] **********************************************************************************************
+
+TASK [Gathering Facts] *****************************************************************************************************
+ok: [replica3]
+
+TASK [Install build packages] **********************************************************************************************
+ok: [replica3]
+
+TASK [Download Redis tar file] *********************************************************************************************
+changed: [replica3]
+
+TASK [Extract Redis] *******************************************************************************************************
+changed: [replica3]
+
+TASK [Compile Redis (make)] ************************************************************************************************
+changed: [replica3]
+
+TASK [Install Redis (make install)] ****************************************************************************************
+changed: [replica3]
+
+TASK [Stop the running Redis] **********************************************************************************************
+changed: [replica3]
+
+TASK [Start Redis again with the same config] ******************************************************************************
+changed: [replica3]
+
+PLAY RECAP *****************************************************************************************************************
+replica3                   : ok=8    changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+
+[5] master 10.10.0.16 done - cluster: ok
+[6] Failing over master 10.10.0.15 to replica 10.10.0.11 ...
+OK
+[6] Upgrading old master 10.10.0.15 ...
+
+PLAY [Upgrade one Redis node] **********************************************************************************************
+
+TASK [Gathering Facts] *****************************************************************************************************
+ok: [replica2]
+
+TASK [Install build packages] **********************************************************************************************
+ok: [replica2]
+
+TASK [Download Redis tar file] *********************************************************************************************
+changed: [replica2]
+
+TASK [Extract Redis] *******************************************************************************************************
+changed: [replica2]
+
+TASK [Compile Redis (make)] ************************************************************************************************
+changed: [replica2]
+
+TASK [Install Redis (make install)] ****************************************************************************************
+changed: [replica2]
+
+TASK [Stop the running Redis] **********************************************************************************************
+changed: [replica2]
+
+TASK [Start Redis again with the same config] ******************************************************************************
+changed: [replica2]
+
+PLAY RECAP *****************************************************************************************************************
+replica2                   : ok=8    changed=6    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+
+[6] master 10.10.0.15 done - cluster: ok
+Checking data after upgrade...
+Data verify Started
+Keys: 1000
+==========================
+RESULT SUMMARY
+TOTAL OK: 1000
+MISSING: 0
+MISMATCH: 0
+PASS - 1000/1000 keys verified
+Cluster State: ok
+
+MASTERS
+  10.10.0.13:6379 [master] v7.2.6 slots: 10923-16383  keys: 343 mem: 1.83M
+  10.10.0.11:6379 [master] v7.2.6 slots: 0-5460  keys: 333 mem: 1.88M
+  10.10.0.12:6379 [master] v7.2.6 slots: 5461-10922  keys: 324 mem: 1.83M
+
+REPLICAS
+  10.10.0.15:6379 [replica] v7.2.6 replicating: 10.10.0.11:6379 mem: 1.69M
+  10.10.0.14:6379 [replica] v7.2.6 replicating: 10.10.0.13:6379 mem: 1.69M
+  10.10.0.16:6379 [replica] v7.2.6 replicating: 10.10.0.12:6379 mem: 1.69M
+UPGRADE COMPLETE

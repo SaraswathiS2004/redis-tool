@@ -1,0 +1,128 @@
+- name: Configure Redis Cluster
+  hosts: redis_nodes
+  become: yes
+
+  tasks:
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install required packages for 7.0.15
+      apt:
+        name: 
+          - build-essential
+          - tcl
+          - wget 
+        state: present
+        update_cache: yes
+    
+    - name: Download Redis tar file
+      get_url:
+         url:  https://download.redis.io/releases/redis-7.0.15.tar.gz
+         dest: /tmp/redis-7.0.15.tar.gz
+    
+    - name: Extract Redis
+      unarchive:
+        src: /tmp/redis-7.0.15.tar.gz
+        dest: /tmp/
+        remote_src: yes
+    - name: Compile Redis (make)
+      make:
+         chdir: /tmp/redis-7.0.15
+
+    - name: Install Redis (make install)
+      make:
+        chdir: /tmp/redis-7.0.15
+        target: install
+
+    - name: Create /etc/redis directory
+      file:
+        path: /etc/redis
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy default redis.conf from source
+      copy:
+        src: /tmp/redis-7.0.15/redis.conf
+        dest: /etc/redis/redis.conf
+        remote_src: yes
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create Redis data directory
+      file:
+        path: /var/lib/redis
+        state: directory
+        owner: root
+        group: root
+        mode: '0755' 
+
+    - name: Configure bind
+      lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^bind'
+        line: 'bind 0.0.0.0'
+
+    - name: Disable protected mode
+      lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^protected-mode'
+        line: 'protected-mode no'
+
+    - name: Enable cluster mode
+      lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^cluster-enabled'
+        line: 'cluster-enabled yes'
+
+    - name: Set cluster config file
+      lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^cluster-config-file'
+        line: 'cluster-config-file nodes.conf'
+
+    - name: Set cluster timeout
+      lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^cluster-node-timeout'
+        line: 'cluster-node-timeout 5000'
+
+    - name: Enable appendonly
+      lineinfile:
+        path: /etc/redis/redis.conf
+        regexp: '^appendonly'
+        line: 'appendonly yes'
+        
+    - name: Kill any existing Redis process
+      shell: pkill redis-server || true
+
+    - name: Start Redis in background
+      shell: /usr/local/bin/redis-server /etc/redis/redis.conf --daemonize yes
+
+    - name: Wait until Redis is listening
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: 6379
+        timeout: 60
+
+- name: Create Redis Cluster
+  hosts: master1
+  become: yes
+
+  tasks:
+    - name: Create cluster
+      shell: |
+        yes yes | /usr/local/bin/redis-cli --cluster create \
+        10.10.0.11:6379 \
+        10.10.0.12:6379 \
+        10.10.0.13:6379 \
+        10.10.0.14:6379 \
+        10.10.0.15:6379 \
+        10.10.0.16:6379 \
+        --cluster-replicas 1
+      run_once: true
